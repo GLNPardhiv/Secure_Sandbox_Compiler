@@ -1,10 +1,39 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <cstdio>
+#include <array>
+#include <memory>
+#include <stdexcept>
+
 #include "compiler.h"
 #include "sandbox.h"
 #include "reporter.h"
-#include "security.h" // Week 8
+#include "security.h"
+
+// --- Helper Function to Call Python AI ---
+std::string callAIAnalyzer(const std::string& sourceFile) {
+    std::string command = "python3 risk_analyzer.py " + sourceFile;
+    std::array<char, 128> buffer;
+    std::string result;
+    
+    // Open pipe to python script
+    FILE* pipe = popen(command.c_str(), "r");
+    
+    if (!pipe) {
+        return "{}"; // Failed to open pipe
+    }
+
+    // Read stdout from python script
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+        result += buffer.data();
+    }
+    
+    // Close pipe
+    pclose(pipe);
+    
+    return result;
+}
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -25,38 +54,76 @@ int main(int argc, char* argv[]) {
     Sandbox sandbox;
     Reporter reporter;
 
-    CompileResult cRes = compiler.compile(sourceFile);
-    ExecutionResult eRes;
+    // --- PHASE 4: AI Risk Analysis (Week 9) ---
+    if (!jsonMode) std::cout << ">>> 🧠 Invoking AI Risk Analyzer...\n";
     
-    // Defaults
+    std::string aiJson = callAIAnalyzer(sourceFile);
+    
+    // Simple JSON parsing (manual string find for simplicity in C++)
+    bool isSafe = true;
+    if (aiJson.find("\"is_safe\": false") != std::string::npos) {
+        isSafe = false;
+    }
+
+    // Extract Analysis Message
+    std::string analysisMsg = "Analysis failed";
+    size_t start = aiJson.find("\"analysis\": \"");
+    if (start != std::string::npos) {
+        start += 13; // Length of label
+        size_t end = aiJson.find("\"", start);
+        analysisMsg = aiJson.substr(start, end - start);
+    }
+
+    // --- DECISION GATE ---
+    if (!isSafe) {
+        if (jsonMode) {
+            std::cout << "{"
+                      << "\"compiled\": false,"
+                      << "\"executed\": false,"
+                      << "\"status\": \"Blocked by AI Security\","
+                      << "\"interpretation\": \"" << analysisMsg << "\""
+                      << "}\n";
+        } else {
+            std::cout << "\n[!] 🛑 SECURITY ALERT: Code blocked by AI Risk Analyzer.\n";
+            std::cout << "[!] Reason: " << analysisMsg << "\n";
+            std::cout << "[!] The compiler will NOT proceed.\n";
+        }
+        return 1; // STOP HERE
+    }
+
+    if (!jsonMode) std::cout << ">>> ✅ AI Analysis Passed. Proceeding to compilation.\n";
+
+    // --- EXISTING FLOW (Weeks 1-8) ---
+
+    // Phase 1: Compile (with Seccomp injection)
+    CompileResult cRes = compiler.compile(sourceFile);
+    
+    ExecutionResult eRes;
     eRes.exitCode = 0;
     eRes.signal = 0;
     eRes.timeout = false;
 
     if (cRes.success) {
-        if (!jsonMode) std::cout << "Compilation: SUCCESS (Seccomp & Isolation Ready)\n";
+        if (!jsonMode) {
+            std::cout << "Compilation: SUCCESS (Seccomp & Isolation Ready)\n";
+        }
         
         if (runRequested || jsonMode) {
             if (!jsonMode) {
-                std::cout << ">>> Setting up File System Jail (Week 8)...\n";
-                std::cout << ">>> Validating Memory Isolation...\n";
+                std::cout << ">>> Setting up File System Jail...\n";
             }
-
-            // WEEK 8: Setup File System Jail
-            std::string jailedBinary = SecurityModule::setupJail(cRes.binaryPath);
-
-            // Execute the jailed binary
-            eRes = sandbox.execute(jailedBinary);
             
-            // WEEK 8: Cleanup Jail
+            std::string jailedBinary = SecurityModule::setupJail(cRes.binaryPath);
+            eRes = sandbox.execute(jailedBinary);
             SecurityModule::cleanupJail(jailedBinary);
+            remove(cRes.binaryPath.c_str());
 
             if (!jsonMode) {
                 reporter.reportExecution(eRes);
-                std::cout << "\n[Log] Security events logged to 'sandbox_exec.log'\n";
             }
+        } else {
+            remove(cRes.binaryPath.c_str());
         }
-        remove(cRes.binaryPath.c_str());
     } else {
         if (!jsonMode) reporter.reportCompilationError(cRes);
     }

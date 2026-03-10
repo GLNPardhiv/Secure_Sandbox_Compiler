@@ -1,0 +1,1 @@
+{"risk_score": 9, "is_safe": false, "analysis": "The code contains an infinite loop (`while(true)`), which will cause a Denial of Service (DoS) by consuming CPU resources indefinitely in the sandbox environment. This prevents other processes from running and can lead to a system freeze or unresponsiveness."}

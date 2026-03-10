@@ -1,0 +1,1 @@
+{"risk_score": 10, "is_safe": false, "analysis": "The code contains an infinite loop (while(1)) that continuously calls the fork() system call. This creates new processes exponentially, leading to a classic fork bomb. This will quickly exhaust system resources, causing a Denial of Service (DoS) and potentially crashing the sandbox environment or the host system."}

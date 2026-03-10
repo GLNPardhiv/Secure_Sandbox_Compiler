@@ -1,0 +1,1 @@
+{"risk_score": 0, "is_safe": true, "analysis": "No malicious intent or resource abuse detected. The code performs basic console output and exits without engaging in infinite loops, fork bombs, system calls, network operations, or file I/O beyond standard output."}
