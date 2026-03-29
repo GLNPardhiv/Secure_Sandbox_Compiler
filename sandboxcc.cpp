@@ -39,27 +39,34 @@ bool quickHeuristicCheck(const std::string& sourcePath, bool& skipAI) {
     std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     int threatScore = 0;
 
-    // 1. FATAL THREATS (+100) -> Immediate Local Block
+    // 1. FATAL THREATS (+100) -> Immediate Local Block (Zero Latency)
+    // ONLY block things that have absolutely zero legitimate use in a basic academic sandbox
+    // and cannot be safely contained by Seccomp (like raw assembly or raw socket headers).
     std::vector<std::string> fatalKeywords = {
-        "system(", "fork(", "exec", "asm(", "<sys/socket.h>", "popen(", "clone("
+        "asm(", "__asm__", "<sys/socket.h>", "<netinet/in.h>", "ptrace("
     };
     for (const auto& kw : fatalKeywords) {
         if (content.find(kw) != std::string::npos) {
-            std::cout << "[!] ⚡ Fast-Fail: Dangerous keyword '" << kw << "' detected locally.\n";
-            threatScore += 100;
-            break; // No need to check further, it's already dead
+            std::cout << "[!] ⚡ Fast-Fail: Fatal hardware/network keyword '" << kw << "' detected locally.\n";
+            return false; // Block immediately without AI
         }
     }
 
-    // 2. SUSPICIOUS FEATURES (+50) -> Force AI Scan
-    // These aren't malicious by themselves, but hackers use them to obfuscate.
+    // 2. SUSPICIOUS FEATURES (+50) -> Force AI Scan (Contextual Analysis)
+    // These are features used by malware, BUT also used by legitimate students 
+    // (e.g., OS homework, custom memory allocators, string logic).
+    // We let the AI read the context to decide if it's safe or malicious.
     std::vector<std::string> suspiciousFeatures = {
-        "<unistd.h>",      // POSIX OS API
-        "<string>",        // String manipulation (like "soc" + "ket")
-        "vector",          // Data structures (padding)
-        "(*",              // Function pointers (used to hide executions)
-        "char ",           // Raw char arrays (used to hide commands)
-        "fstream"          // File reading/writing
+        "exec(",           // Could be malware, or OS homework
+        "system(",         // Could be malware, or harmless shell script
+        "fork(",           // Could be a fork bomb, or legitimate threading
+        "clone(",          // Advanced threading
+        "popen(",          // Piping
+        "<unistd.h>",      // POSIX API
+        "<pthread.h>",     // Threading
+        "<string>",        // String manipulation (often used to hide commands)
+        "(*",              // Function pointers (used to obfuscate execution)
+        "char "            // Raw char arrays (used to hide hex commands)
     };
     for (const auto& feature : suspiciousFeatures) {
         if (content.find(feature) != std::string::npos) {
@@ -68,17 +75,17 @@ bool quickHeuristicCheck(const std::string& sourcePath, bool& skipAI) {
     }
 
     // --- DECISION ENGINE ---
-    if (threatScore >= 100) {
-        return false; // Fast-Fail: Block compilation
-    } 
-    else if (threatScore > 0) {
-        skipAI = false; // Suspicious: Force Gemini Scan
-        return true;    // Proceed to AI step
+    if (threatScore > 0) {
+        // Suspicious: Force Gemini Scan to analyze context and prevent false positives
+        skipAI = false; 
+        return true;    
     } 
     else {
+        // Score is 0: Pure boilerplate (iostream, basic math). 
+        // Fast-Pass to save API costs and reduce latency.
         std::cout << ">>> ⚡ Local Heuristic Analysis: Code looks simple & safe. Skipping AI.\n";
-        skipAI = true;  // Score is 0: Pure boilerplate, Fast-Pass
-        return true;    // Proceed to compile directly
+        skipAI = true;  
+        return true;    
     }
 }
 
