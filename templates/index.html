@@ -4,151 +4,506 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Defensive Execution Sandbox</title>
-    
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/material-ocean.min.css">
-    
+
     <style>
         :root {
-            --bg: #09090b;
-            --panel: #18181b;
-            --border: #27272a;
-            --accent: #3b82f6;
+            --bg: #040610;
+            --panel: rgba(10, 14, 35, 0.75);
+            --panel-solid: #0a0e23;
+            --border: rgba(99, 102, 241, 0.18);
+            --border-bright: rgba(99, 102, 241, 0.5);
+            --accent: #6366f1;
+            --accent2: #06b6d4;
+            --accent3: #a855f7;
             --success: #10b981;
-            --danger: #ef4444;
+            --danger: #f43f5e;
             --warning: #f59e0b;
-            --text: #e4e4e7;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --glow-accent: rgba(99, 102, 241, 0.4);
+            --glow-cyan: rgba(6, 182, 212, 0.4);
+            --glow-purple: rgba(168, 85, 247, 0.4);
+            --glow-success: rgba(16, 185, 129, 0.35);
+            --glow-danger: rgba(244, 63, 94, 0.35);
+            --glow-warning: rgba(245, 158, 11, 0.35);
         }
 
+        * { box-sizing: border-box; }
+
         body {
-            font-family: 'Segoe UI', system-ui, sans-serif;
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
             background-color: var(--bg);
             color: var(--text);
             margin: 0;
             height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
 
-        /* HEADER */
+        /* ── ANIMATED BACKGROUND ─────────────────────────────────────── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 20% 10%, rgba(99,102,241,0.12) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 50% at 80% 80%, rgba(168,85,247,0.10) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 40% at 50% 50%, rgba(6,182,212,0.06) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+            animation: bgShift 12s ease-in-out infinite alternate;
+        }
+        @keyframes bgShift {
+            0%   { opacity: 1; }
+            50%  { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        /* Subtle grid overlay */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(99,102,241,0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99,102,241,0.04) 1px, transparent 1px);
+            background-size: 48px 48px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        header, .dashboard { position: relative; z-index: 1; }
+
+        /* ── HEADER ──────────────────────────────────────────────────── */
         header {
-            background: linear-gradient(90deg, #18181b 0%, #09090b 100%);
-            padding: 15px 30px;
+            background: rgba(4, 6, 16, 0.85);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            padding: 14px 28px;
             border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 32px rgba(0,0,0,0.6), 0 1px 0 rgba(99,102,241,0.2);
         }
-        .logo-box h1 { margin: 0; font-size: 1.5rem; letter-spacing: 1px; color: #fff; }
-        .logo-box span { color: var(--accent); text-shadow: 0 0 10px rgba(59,130,246,0.5); }
-        .tagline { font-size: 0.85rem; color: #a1a1aa; }
 
-        /* CONTROLS */
-        .controls { display: flex; gap: 15px; align-items: center; }
-        select, button {
-            background: var(--panel); color: var(--text);
-            border: 1px solid var(--border); padding: 8px 15px;
-            border-radius: 6px; font-size: 14px; outline: none;
+        .logo-box { display: flex; flex-direction: column; gap: 2px; }
+        .logo-box h1 {
+            margin: 0;
+            font-size: 1.35rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #fff 30%, #a5b4fc 70%, #67e8f9 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        button.run-btn {
-            background: var(--accent); color: white; border: none;
-            font-weight: bold; cursor: pointer; transition: 0.2s;
-            box-shadow: 0 0 15px rgba(59,130,246,0.4);
+        .logo-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 500;
+            color: var(--accent2);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            opacity: 0.85;
         }
-        button.run-btn:hover { background: #2563eb; transform: translateY(-1px); }
-        button.run-btn:disabled { background: #3f3f46; cursor: not-allowed; box-shadow: none; }
+        .logo-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--accent2);
+            box-shadow: 0 0 6px var(--accent2);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.5; transform: scale(0.7); }
+        }
 
-        /* MAIN LAYOUT */
+        /* ── CONTROLS ────────────────────────────────────────────────── */
+        .controls { display: flex; gap: 10px; align-items: center; }
+
+        select {
+            background: rgba(15, 20, 50, 0.8);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            backdrop-filter: blur(8px);
+        }
+        select:hover, select:focus {
+            border-color: var(--border-bright);
+            box-shadow: 0 0 10px var(--glow-accent);
+        }
+        select option { background: #0d1130; }
+
+        .run-btn {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent3) 100%);
+            color: #fff;
+            border: none;
+            padding: 9px 22px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+            transition: transform 0.18s, box-shadow 0.18s;
+            box-shadow: 0 0 20px var(--glow-accent), 0 2px 8px rgba(0,0,0,0.4);
+        }
+        .run-btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+            transition: left 0.4s;
+        }
+        .run-btn:hover::before { left: 100%; }
+        .run-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px var(--glow-accent), 0 4px 16px rgba(0,0,0,0.5);
+        }
+        .run-btn:active { transform: translateY(0); }
+        .run-btn:disabled {
+            background: linear-gradient(135deg, #2d3060 0%, #3b2d5a 100%);
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+            opacity: 0.6;
+        }
+        .run-btn .btn-spinner {
+            display: none;
+            width: 13px; height: 13px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+        .run-btn.loading .btn-spinner { display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── RIPPLE ──────────────────────────────────────────────────── */
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            transform: scale(0);
+            animation: ripple-anim 0.5s linear;
+            pointer-events: none;
+        }
+        @keyframes ripple-anim {
+            to { transform: scale(4); opacity: 0; }
+        }
+
+        /* ── DASHBOARD LAYOUT ─────────────────────────────────────────── */
         .dashboard {
             display: grid;
-            grid-template-columns: 1.2fr 1fr;
+            grid-template-columns: 1.25fr 1fr;
             grid-template-rows: 1fr 1fr;
-            gap: 15px;
-            padding: 15px;
+            gap: 14px;
+            padding: 14px;
             flex: 1;
             overflow: hidden;
         }
 
+        /* ── PANELS ─────────────────────────────────────────────────── */
         .panel {
             background: var(--panel);
             border: 1px solid var(--border);
-            border-radius: 10px;
+            border-radius: 14px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow:
+                0 8px 32px rgba(0,0,0,0.4),
+                0 1px 0 rgba(255,255,255,0.04) inset,
+                0 0 0 1px rgba(99,102,241,0.06) inset;
+            transition: box-shadow 0.3s, border-color 0.3s;
         }
+        .panel:hover {
+            border-color: rgba(99,102,241,0.28);
+            box-shadow:
+                0 12px 48px rgba(0,0,0,0.5),
+                0 1px 0 rgba(255,255,255,0.06) inset,
+                0 0 24px rgba(99,102,241,0.08);
+        }
+
         .panel-header {
-            background: #1f1f22; padding: 10px 15px; font-size: 12px;
-            font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
-            border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;
+            background: rgba(255,255,255,0.03);
+            padding: 10px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-muted);
+        }
+        .panel-header span {
+            color: var(--accent2);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 400;
+            letter-spacing: 0;
+        }
+        .panel-header-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent);
+            animation: pulse-dot 2.5s ease-in-out infinite;
         }
 
-        /* EDITOR */
+        /* ── EDITOR ──────────────────────────────────────────────────── */
         .editor-container { grid-row: 1 / 3; }
-        .CodeMirror { flex: 1; height: 100%; font-family: 'Fira Code', monospace; font-size: 15px; }
+        .CodeMirror {
+            flex: 1;
+            height: 100%;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 14px;
+            line-height: 1.65;
+            background: transparent !important;
+        }
+        .CodeMirror-scroll { background: rgba(5, 8, 22, 0.6) !important; }
+        .CodeMirror-gutters { background: rgba(5, 8, 22, 0.8) !important; border-right: 1px solid var(--border) !important; }
 
-        /* PIPELINE VISUALIZER */
-        .visualizer { padding: 20px; display: flex; flex-direction: column; justify-content: center; gap: 15px; }
+        /* ── PIPELINE VISUALIZER ─────────────────────────────────────── */
+        .visualizer {
+            padding: 18px 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 10px;
+            flex: 1;
+        }
+
         .step {
-            display: flex; align-items: center; gap: 15px;
-            padding: 12px 20px; border-radius: 8px;
-            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
-            transition: all 0.4s ease; opacity: 0.5;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(255,255,255,0.07);
+            transition: all 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+            opacity: 0.4;
+            cursor: default;
         }
-        .step.active { opacity: 1; transform: scale(1.02); }
-        .step.success { border-color: var(--success); box-shadow: 0 0 15px rgba(16,185,129,0.2); }
-        .step.danger { border-color: var(--danger); box-shadow: 0 0 15px rgba(239,68,68,0.2); }
-        .step.warning { border-color: var(--warning); box-shadow: 0 0 15px rgba(245,158,11,0.2); }
-        .step-icon { font-size: 24px; }
-        .step-text h4 { margin: 0 0 5px 0; font-size: 14px; }
-        .step-text p { margin: 0; font-size: 12px; color: #a1a1aa; }
+        .step-icon {
+            font-size: 22px;
+            width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            flex-shrink: 0;
+            transition: all 0.4s ease;
+        }
+        .step-text h4 { margin: 0 0 3px 0; font-size: 13px; font-weight: 600; }
+        .step-text p  { margin: 0; font-size: 11px; color: var(--text-muted); line-height: 1.4; }
 
-        /* TERMINAL */
-        #output {
-            flex: 1; margin: 0; padding: 15px; background: #000;
-            color: #10b981; font-family: 'Consolas', monospace;
-            font-size: 13px; overflow-y: auto; white-space: pre-wrap;
+        /* Active state */
+        .step.active {
+            opacity: 1;
+            transform: translateX(4px) scale(1.01);
         }
+
+        /* Success */
+        .step.success {
+            background: rgba(16,185,129,0.08);
+            border-color: rgba(16,185,129,0.4);
+            box-shadow: 0 0 18px var(--glow-success), inset 0 1px 0 rgba(16,185,129,0.12);
+        }
+        .step.success .step-icon {
+            background: rgba(16,185,129,0.15);
+            border-color: rgba(16,185,129,0.3);
+            box-shadow: 0 0 12px var(--glow-success);
+        }
+
+        /* Danger */
+        .step.danger {
+            background: rgba(244,63,94,0.08);
+            border-color: rgba(244,63,94,0.4);
+            box-shadow: 0 0 18px var(--glow-danger), inset 0 1px 0 rgba(244,63,94,0.12);
+        }
+        .step.danger .step-icon {
+            background: rgba(244,63,94,0.15);
+            border-color: rgba(244,63,94,0.3);
+            box-shadow: 0 0 12px var(--glow-danger);
+        }
+
+        /* Warning */
+        .step.warning {
+            background: rgba(245,158,11,0.08);
+            border-color: rgba(245,158,11,0.4);
+            box-shadow: 0 0 18px var(--glow-warning), inset 0 1px 0 rgba(245,158,11,0.12);
+        }
+        .step.warning .step-icon {
+            background: rgba(245,158,11,0.15);
+            border-color: rgba(245,158,11,0.3);
+            box-shadow: 0 0 12px var(--glow-warning);
+        }
+
+        /* Step connector line */
+        .step-connector {
+            width: 2px;
+            height: 10px;
+            margin: 0 0 0 28px;
+            background: linear-gradient(180deg, rgba(99,102,241,0.3), transparent);
+            border-radius: 2px;
+        }
+
+        /* ── TERMINAL ────────────────────────────────────────────────── */
+        .terminal-wrapper {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: rgba(2, 4, 12, 0.85);
+        }
+        .terminal-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+            opacity: 0.5;
+        }
+        #output {
+            display: block;
+            margin: 0;
+            padding: 14px 16px;
+            color: #a5f3bf;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 12.5px;
+            line-height: 1.7;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            height: 100%;
+            background: transparent;
+            text-shadow: 0 0 8px rgba(16,185,129,0.3);
+        }
+        #output::-webkit-scrollbar { width: 5px; }
+        #output::-webkit-scrollbar-track { background: transparent; }
+        #output::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.4); border-radius: 3px; }
+
+        /* Terminal loading lines */
+        .terminal-line-info  { color: #67e8f9; text-shadow: 0 0 6px rgba(6,182,212,0.5); }
+        .terminal-line-warn  { color: #fbbf24; text-shadow: 0 0 6px rgba(251,191,36,0.5); }
+        .terminal-line-error { color: #fb7185; text-shadow: 0 0 6px rgba(251,113,133,0.5); }
+        .terminal-line-ok    { color: #86efac; text-shadow: 0 0 6px rgba(134,239,172,0.4); }
+
+        /* ── LOADING OVERLAY ─────────────────────────────────────────── */
+        .loading-bar {
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3));
+            background-size: 200% 100%;
+            animation: gradient-shift 1.5s linear infinite;
+            border-radius: 0 0 2px 2px;
+            transform-origin: left;
+            transition: opacity 0.3s;
+        }
+        @keyframes gradient-shift {
+            0%   { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+
+        /* ── STATUS BADGE ─────────────────────────────────────────────── */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            border-radius: 20px;
+            background: rgba(16,185,129,0.12);
+            border: 1px solid rgba(16,185,129,0.3);
+            color: #34d399;
+        }
+        .status-badge .dot {
+            width: 5px; height: 5px;
+            border-radius: 50%;
+            background: #34d399;
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+
+        /* ── SCROLLBARS ──────────────────────────────────────────────── */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 3px; }
     </style>
 </head>
 <body>
 
     <header>
         <div class="logo-box">
-            <h1><span>🛡️</span> Secure C++ Sandbox</h1>
-            <div class="tagline">Tiered Analysis & Kernel Isolation Engine</div>
+            <h1>🛡️ Secure C++ Sandbox</h1>
+            <div class="logo-badge">
+                <span class="logo-dot"></span>
+                Tiered Analysis &amp; Kernel Isolation Engine
+            </div>
         </div>
         <div class="controls">
-            <!-- Example Loader -->
             <select id="exampleSelector" onchange="loadExample()">
-                <option value="hello">Example: Hello World (Safe)</option>
-                <option value="buffer">Example: Buffer Overflow (Sandbox Crash)</option>
-                <option value="fork">Example: Fork Bomb (Local Block)</option>
-                <option value="obfuscated">Example: Obfuscated Network (AI Block)</option>
+                <option value="hello">📄 Example: Hello World (Safe)</option>
+                <option value="buffer">💥 Example: Buffer Overflow (Sandbox Crash)</option>
+                <option value="fork">🔁 Example: Fork Bomb (Local Block)</option>
+                <option value="obfuscated">🕵️ Example: Obfuscated Network (AI Block)</option>
             </select>
-            
-            <!-- CLI Feature Toggle -->
+
             <select id="modeSelector">
-                <option value="--run">Mode: Full Pipeline (Compile & Run)</option>
-                <option value="--analyze">Mode: Security Audit Only</option>
+                <option value="--run">⚙️ Mode: Full Pipeline (Compile &amp; Run)</option>
+                <option value="--analyze">🔍 Mode: Security Audit Only</option>
             </select>
-            
-            <button id="runBtn" class="run-btn" onclick="runCode()">▶ Execute System</button>
+
+            <button id="runBtn" class="run-btn" onclick="runCode()">
+                <span class="btn-spinner"></span>▶ Execute System
+            </button>
         </div>
     </header>
 
     <div class="dashboard">
         <!-- LEFT: Editor -->
         <div class="panel editor-container">
-            <div class="panel-header">Source Code <span>main.cpp</span></div>
+            <div class="panel-header">
+                <span style="color:var(--text-muted)">Source Code</span>
+                <span>main.cpp</span>
+                <div class="status-badge"><span class="dot"></span>Ready</div>
+            </div>
+            <div class="loading-bar" id="editorLoadBar" style="opacity:0;height:2px;"></div>
             <textarea id="code"></textarea>
         </div>
 
         <!-- TOP RIGHT: Architecture Visualizer -->
         <div class="panel">
-            <div class="panel-header">System Architecture Status</div>
+            <div class="panel-header">
+                <span style="color:var(--text-muted)">System Architecture</span>
+                <div class="panel-header-dot"></div>
+            </div>
             <div class="visualizer" id="visualizer">
                 <div class="step" id="step1">
                     <div class="step-icon">⚡</div>
@@ -157,6 +512,7 @@
                         <p>Scanning for obvious threats and simple code.</p>
                     </div>
                 </div>
+                <div class="step-connector"></div>
                 <div class="step" id="step2">
                     <div class="step-icon">🧠</div>
                     <div class="step-text">
@@ -164,13 +520,15 @@
                         <p>Gemini semantic analysis for complex logic.</p>
                     </div>
                 </div>
+                <div class="step-connector"></div>
                 <div class="step" id="step3">
                     <div class="step-icon">🔒</div>
                     <div class="step-text">
                         <h4>Tier 3: Kernel Sandbox</h4>
-                        <p>Seccomp-BPF runtime isolation & execution.</p>
+                        <p>Seccomp-BPF runtime isolation &amp; execution.</p>
                     </div>
                 </div>
+                <div class="step-connector"></div>
                 <div class="step" id="step4">
                     <div class="step-icon">🤖</div>
                     <div class="step-text">
@@ -183,14 +541,19 @@
 
         <!-- BOTTOM RIGHT: Terminal -->
         <div class="panel">
-            <div class="panel-header">Server Console <span>/bin/bash</span></div>
-            <pre id="output">Sandbox initialized. Awaiting payload...</pre>
+            <div class="panel-header">
+                <span style="color:var(--text-muted)">Server Console</span>
+                <span>/bin/bash</span>
+            </div>
+            <div class="terminal-wrapper">
+                <pre id="output">Sandbox initialized. Awaiting payload...</pre>
+            </div>
         </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/clike/clike.min.js"></script>
-    
+
     <script>
         var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
             mode: "text/x-c++src",
@@ -203,11 +566,11 @@
         // Pre-loaded Code Examples for Presentation
         const examples = {
             hello: `#include <iostream>\n\nint main() {\n    std::cout << "Optimization: Fast-path bypasses AI.\\n";\n    return 0;\n}`,
-            
+
             buffer: `#include <cstring>\n#include <iostream>\n\nint main() {\n    char buffer[10];\n    // Sandbox will catch this, AI Tutor will explain it\n    std::strcpy(buffer, "This string is way too massive for the buffer!");\n    return 0;\n}`,
-            
+
             fork: `#include <unistd.h>\n\nint main() {\n    // Local Heuristics will catch this instantly\n    while(true) fork();\n    return 0;\n}`,
-            
+
             obfuscated: `#include <iostream>\n#include <cstdlib>\n#include <unistd.h>\n\n// ---------------------------------------------------------\n// HACKER ATTEMPT: Function pointer obfuscation\n// ---------------------------------------------------------\nvoid execute_payload() {\n    // 1. Hide the execution call using a function pointer\n    // This bypasses the local regex because there is no "system("\n    int (*sys_ptr)(const char*) = system;\n    \n    // 2. Hide the malicious command\n    char cmd[] = {'r', 'm', ' ', '-', 'r', 'f', ' ', '/', '\\0'};\n    \n    // 3. Execute! \n    // Local filter misses this. AI will catch the semantic intent!\n    sys_ptr(cmd);\n}\n\nint main() {\n    execute_payload();\n    return 0;\n}`
         };
 
@@ -224,16 +587,16 @@
         }
 
         function animateVisualizer(text) {
-            const out = text.toLowerCase(); 
+            const out = text.toLowerCase();
 
             // Tier 1: Heuristics
             if (out.includes("local heuristic") || out.includes("fast-path") || out.includes("skipping ai")) {
                 document.getElementById('step1').classList.add('active', 'success');
             } else if (out.includes("blocked by local") || out.includes("fast-fail")) {
                 document.getElementById('step1').classList.add('active', 'danger');
-                return; 
+                return;
             } else {
-                document.getElementById('step1').classList.add('active', 'success'); 
+                document.getElementById('step1').classList.add('active', 'success');
             }
 
             // Tier 2: AI Scanner
@@ -263,14 +626,29 @@
             }
         }
 
+        // Ripple effect on run button
+        document.getElementById('runBtn').addEventListener('click', function(e) {
+            const btn = this;
+            const rect = btn.getBoundingClientRect();
+            const ripple = document.createElement('span');
+            const size = Math.max(rect.width, rect.height);
+            ripple.className = 'ripple';
+            ripple.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - rect.left - size/2}px;top:${e.clientY - rect.top - size/2}px`;
+            btn.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 600);
+        });
+
         async function runCode() {
             const runBtn = document.getElementById('runBtn');
             const outputArea = document.getElementById('output');
+            const loadBar = document.getElementById('editorLoadBar');
             const mode = document.getElementById('modeSelector').value;
             const code = editor.getValue();
 
             runBtn.disabled = true;
-            runBtn.innerText = "Processing...";
+            runBtn.classList.add('loading');
+            runBtn.innerHTML = '<span class="btn-spinner"></span>Processing...';
+            loadBar.style.opacity = '1';
             resetVisualizer();
 
             // Terminal Loading Animation
@@ -283,15 +661,14 @@
                 "[*] Process terminated. Collecting telemetry...",
                 "[*] Analyzing telemetry data (Waiting for Cloud API)..."
             ];
-            
+
             outputArea.innerHTML = phases[0];
-            
+
             let loadingInterval = setInterval(() => {
                 if (phase < phases.length - 1) {
                     phase++;
                     outputArea.innerHTML += "\n" + phases[phase];
-                    
-                    // Visually light up blocks while waiting
+
                     if (phase === 1) document.getElementById('step1').classList.add('active');
                     if (phase === 3) document.getElementById('step3').classList.add('active');
                     if (phase === 5) document.getElementById('step4').classList.add('active', 'warning');
@@ -310,15 +687,11 @@
                 });
 
                 const data = await response.json();
-                
-                // Clear loading
+
                 clearInterval(loadingInterval);
-                resetVisualizer(); 
-                
-                // Show real output
+                resetVisualizer();
+
                 outputArea.textContent = data.output;
-                
-                // Animate final blocks based on what actually happened
                 animateVisualizer(data.output);
 
             } catch (error) {
@@ -327,7 +700,9 @@
                 document.getElementById('step1').classList.add('active', 'danger');
             } finally {
                 runBtn.disabled = false;
-                runBtn.innerText = "▶ Execute System";
+                runBtn.classList.remove('loading');
+                runBtn.innerHTML = '<span class="btn-spinner"></span>▶ Execute System';
+                loadBar.style.opacity = '0';
             }
         }
     </script>
