@@ -45,6 +45,10 @@ app.post('/run', async (req, res) => {
             }
 
             try { await fs.unlink(filepath); } catch (e) {}
+
+            console.log(`\n--- Execution Request ---`);
+            console.log(output.trim());
+            
             res.json({ output: output.trim() });
         });
 
