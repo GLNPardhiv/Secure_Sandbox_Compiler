@@ -4,132 +4,149 @@
 #include <cstdio>
 #include <array>
 #include <memory>
-#include <stdexcept>
+#include <fstream> 
 
 #include "compiler.h"
 #include "sandbox.h"
 #include "reporter.h"
 #include "security.h"
 
-// --- Helper Function to Call Python AI ---
-std::string callAIAnalyzer(const std::string& sourceFile) {
-    std::string command = "python3 risk_analyzer.py " + sourceFile;
-    std::array<char, 128> buffer;
-    std::string result;
-    
-    // Open pipe to python script
-    FILE* pipe = popen(command.c_str(), "r");
-    
-    if (!pipe) {
-        return "{}"; // Failed to open pipe
+// --- Helper: Call Python Script ---
+// Modes: "analyze", "compile_error", "runtime_error"
+std::string callAI(const std::string& mode, const std::string& file, const std::string& extraArg = "") {
+    std::string command = "python3 risk_analyzer.py " + mode + " " + file;
+    if (!extraArg.empty()) {
+        command += " " + extraArg;
     }
+    
+    std::array<char, 2048> buffer;
+    std::string result;
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) return "AI System Failure";
 
-    // Read stdout from python script
     while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
         result += buffer.data();
     }
-    
-    // Close pipe
     pclose(pipe);
-    
     return result;
+}
+
+bool quickHeuristicCheck(const std::string& sourcePath, bool& skipAI) {
+    std::ifstream f(sourcePath);
+    if (!f.is_open()) return false;
+
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    
+    // 1. FAST FAIL: Dangerous Keywords (Block immediately)
+    // If these exist, we don't even need AI to tell us it's bad.
+    const char* badKeywords[] = {"fork(", "system(", "exec(", "socket(", "popen(", "clone("};
+    for (const char* kw : badKeywords) {
+        if (content.find(kw) != std::string::npos) {
+            std::cout << "[!] ⚡ Fast-Fail: Dangerous keyword '" << kw << "' detected locally.\n";
+            return false; // Block immediately
+        }
+    }
+
+    // 2. FAST PASS: Simple Code (Skip AI)
+    // If the code is small and only uses standard IO, trust the Sandbox to catch runtime errors.
+    // This makes "Hello World" instant.
+    bool hasIoStream = content.find("#include <iostream>") != std::string::npos;
+    bool hasVector = content.find("#include <vector>") != std::string::npos;
+    
+    // If code is short (< 300 chars) and doesn't have complex headers like <unistd.h>
+    if (content.length() < 300 && 
+        content.find("#include <unistd.h>") == std::string::npos &&
+        content.find("#include <sys/") == std::string::npos) {
+        
+        std::cout << ">>> ⚡ Local Heuristic Analysis: Code looks simple & safe. Skipping AI.\n";
+        skipAI = true; // Tell main to skip the API call
+        return true;   // Allow compilation
+    }
+
+    // 3. AMBIGUOUS: Code is complex or long.
+    skipAI = false; // Must call AI
+    return true;    // Proceed to AI check
 }
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: ./sandboxcc <source_file> [--run] [--json]\n";
+        std::cerr << "Usage: ./sandboxcc <file> [--run]\n";
         return 1;
     }
 
     std::string sourceFile = argv[1];
     bool runRequested = false;
-    bool jsonMode = false;
-
-    for(int i=2; i<argc; i++) {
-        if (strcmp(argv[i], "--run") == 0) runRequested = true;
-        if (strcmp(argv[i], "--json") == 0) jsonMode = true;
-    }
+    if (argc > 2 && strcmp(argv[2], "--run") == 0) runRequested = true;
 
     Compiler compiler;
     Sandbox sandbox;
     Reporter reporter;
 
-    // --- PHASE 4: AI Risk Analysis (Week 9) ---
-    if (!jsonMode) std::cout << ">>> 🧠 Invoking AI Risk Analyzer...\n";
+    // ---------------------------------------------------------
+    // PHASE 1: PRE-EXECUTION AI RISK ANALYSIS (Week 9)
+    // ---------------------------------------------------------
+        // ---------------------------------------------------------
+    // PHASE 1: PRE-EXECUTION RISK ANALYSIS (Week 9 + 11 Optimization)
+    // ---------------------------------------------------------
     
-    std::string aiJson = callAIAnalyzer(sourceFile);
+    bool skipAI = false;
     
-    // Simple JSON parsing (manual string find for simplicity in C++)
-    bool isSafe = true;
-    if (aiJson.find("\"is_safe\": false") != std::string::npos) {
-        isSafe = false;
+    // Tier 1: Local Check
+    if (!quickHeuristicCheck(sourceFile, skipAI)) {
+        std::cout << "\n[!] 🛑 BLOCKED BY LOCAL SECURITY FILTER.\n";
+        return 1;
     }
 
-    // Extract Analysis Message
-    std::string analysisMsg = "Analysis failed";
-    size_t start = aiJson.find("\"analysis\": \"");
-    if (start != std::string::npos) {
-        start += 13; // Length of label
-        size_t end = aiJson.find("\"", start);
-        analysisMsg = aiJson.substr(start, end - start);
-    }
-
-    // --- DECISION GATE ---
-    if (!isSafe) {
-        if (jsonMode) {
-            std::cout << "{"
-                      << "\"compiled\": false,"
-                      << "\"executed\": false,"
-                      << "\"status\": \"Blocked by AI Security\","
-                      << "\"interpretation\": \"" << analysisMsg << "\""
-                      << "}\n";
-        } else {
-            std::cout << "\n[!] 🛑 SECURITY ALERT: Code blocked by AI Risk Analyzer.\n";
-            std::cout << "[!] Reason: " << analysisMsg << "\n";
-            std::cout << "[!] The compiler will NOT proceed.\n";
-        }
-        return 1; // STOP HERE
-    }
-
-    if (!jsonMode) std::cout << ">>> ✅ AI Analysis Passed. Proceeding to compilation.\n";
-
-    // --- EXISTING FLOW (Weeks 1-8) ---
-
-    // Phase 1: Compile (with Seccomp injection)
-    CompileResult cRes = compiler.compile(sourceFile);
-    
-    ExecutionResult eRes;
-    eRes.exitCode = 0;
-    eRes.signal = 0;
-    eRes.timeout = false;
-
-    if (cRes.success) {
-        if (!jsonMode) {
-            std::cout << "Compilation: SUCCESS (Seccomp & Isolation Ready)\n";
-        }
+    // Tier 2: AI Check (Only if not skipped)
+    if (!skipAI) {
+        std::cout << ">>> 🧠 Invoking AI Risk Analyzer (Complex Code Detected)... ";
+        std::string riskJson = callAI("analyze", sourceFile);
         
-        if (runRequested || jsonMode) {
-            if (!jsonMode) {
-                std::cout << ">>> Setting up File System Jail...\n";
-            }
-            
-            std::string jailedBinary = SecurityModule::setupJail(cRes.binaryPath);
-            eRes = sandbox.execute(jailedBinary);
-            SecurityModule::cleanupJail(jailedBinary);
-            remove(cRes.binaryPath.c_str());
+        if (riskJson.find("\"is_safe\": false") != std::string::npos) {
+            std::cout << "\n\n[!] 🛑 BLOCKED BY AI SECURITY POLICY\n";
+            std::cout << "Analysis: " << riskJson << "\n";
+            return 1;
+        }
+        std::cout << "✅ Safe.\n";
+    }
 
-            if (!jsonMode) {
-                reporter.reportExecution(eRes);
-            }
-        } else {
-            remove(cRes.binaryPath.c_str());
+    // ---------------------------------------------------------
+    // PHASE 2: COMPILATION (Weeks 1-6)
+    // ---------------------------------------------------------
+    CompileResult cRes = compiler.compile(sourceFile);
+
+    if (!cRes.success) {
+        reporter.reportCompilationError(cRes);
+        
+        // --- WEEK 10: AI COMPILER ERROR EXPLANATION ---
+        std::cout << "\n>>> 🤖 AI Tutor (Compiler Help):\n";
+        // Pass the error log file path as the 3rd argument
+        std::string explanation = callAI("compile_error", sourceFile, "compile_errors.txt");
+        std::cout << explanation << "\n";
+        return 1;
+    }
+
+    // ---------------------------------------------------------
+    // PHASE 3: EXECUTION (Weeks 7-8)
+    // ---------------------------------------------------------
+    if (runRequested) {
+        std::string jailedBinary = SecurityModule::setupJail(cRes.binaryPath);
+        ExecutionResult eRes = sandbox.execute(jailedBinary);
+        SecurityModule::cleanupJail(jailedBinary);
+        remove(cRes.binaryPath.c_str());
+
+        reporter.reportExecution(eRes);
+
+        // --- WEEK 10: AI RUNTIME ERROR EXPLANATION ---
+        if (eRes.exitCode != 0 || eRes.signal != 0) {
+            std::cout << "\n>>> 🤖 AI Tutor (Runtime Crash Analysis):\n";
+            std::string signalStr = std::to_string(eRes.signal);
+            std::string explanation = callAI("runtime_error", sourceFile, signalStr);
+            std::cout << explanation << "\n";
         }
     } else {
-        if (!jsonMode) reporter.reportCompilationError(cRes);
-    }
-
-    if (jsonMode) {
-        reporter.reportJson(cRes, eRes);
+        remove(cRes.binaryPath.c_str());
+        std::cout << "Compilation successful (Binary removed).\n";
     }
 
     return 0;

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Defensive Execution Sandbox</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/material-ocean.min.css">
+    
+    <style>
+        :root {
+            --bg: #09090b;
+            --panel: #18181b;
+            --border: #27272a;
+            --accent: #3b82f6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text: #e4e4e7;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* HEADER */
+        header {
+            background: linear-gradient(90deg, #18181b 0%, #09090b 100%);
+            padding: 15px 30px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .logo-box h1 { margin: 0; font-size: 1.5rem; letter-spacing: 1px; color: #fff; }
+        .logo-box span { color: var(--accent); text-shadow: 0 0 10px rgba(59,130,246,0.5); }
+        .tagline { font-size: 0.85rem; color: #a1a1aa; }
+
+        /* CONTROLS */
+        .controls { display: flex; gap: 15px; align-items: center; }
+        select, button {
+            background: var(--panel); color: var(--text);
+            border: 1px solid var(--border); padding: 8px 15px;
+            border-radius: 6px; font-size: 14px; outline: none;
+        }
+        button.run-btn {
+            background: var(--accent); color: white; border: none;
+            font-weight: bold; cursor: pointer; transition: 0.2s;
+            box-shadow: 0 0 15px rgba(59,130,246,0.4);
+        }
+        button.run-btn:hover { background: #2563eb; transform: translateY(-1px); }
+        button.run-btn:disabled { background: #3f3f46; cursor: not-allowed; box-shadow: none; }
+
+        /* MAIN LAYOUT */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 15px;
+            padding: 15px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .panel-header {
+            background: #1f1f22; padding: 10px 15px; font-size: 12px;
+            font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+            border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;
+        }
+
+        /* EDITOR */
+        .editor-container { grid-row: 1 / 3; }
+        .CodeMirror { flex: 1; height: 100%; font-family: 'Fira Code', monospace; font-size: 15px; }
+
+        /* PIPELINE VISUALIZER */
+        .visualizer { padding: 20px; display: flex; flex-direction: column; justify-content: center; gap: 15px; }
+        .step {
+            display: flex; align-items: center; gap: 15px;
+            padding: 12px 20px; border-radius: 8px;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+            transition: all 0.4s ease; opacity: 0.5;
+        }
+        .step.active { opacity: 1; transform: scale(1.02); }
+        .step.success { border-color: var(--success); box-shadow: 0 0 15px rgba(16,185,129,0.2); }
+        .step.danger { border-color: var(--danger); box-shadow: 0 0 15px rgba(239,68,68,0.2); }
+        .step.warning { border-color: var(--warning); box-shadow: 0 0 15px rgba(245,158,11,0.2); }
+        .step-icon { font-size: 24px; }
+        .step-text h4 { margin: 0 0 5px 0; font-size: 14px; }
+        .step-text p { margin: 0; font-size: 12px; color: #a1a1aa; }
+
+        /* TERMINAL */
+        #output {
+            flex: 1; margin: 0; padding: 15px; background: #000;
+            color: #10b981; font-family: 'Consolas', monospace;
+            font-size: 13px; overflow-y: auto; white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-box">
+            <h1><span>🛡️</span> Secure C++ Sandbox</h1>
+            <div class="tagline">Tiered Analysis & Kernel Isolation Engine</div>
+        </div>
+        <div class="controls">
+            <!-- Example Loader -->
+            <select id="exampleSelector" onchange="loadExample()">
+                <option value="hello">Example: Hello World (Safe)</option>
+                <option value="buffer">Example: Buffer Overflow (Sandbox Crash)</option>
+                <option value="fork">Example: Fork Bomb (Local Block)</option>
+                <option value="obfuscated">Example: Obfuscated Network (AI Block)</option>
+            </select>
+            
+            <!-- CLI Feature Toggle -->
+            <select id="modeSelector">
+                <option value="--run">Mode: Full Pipeline (Compile & Run)</option>
+                <option value="--analyze">Mode: Security Audit Only</option>
+            </select>
+            
+            <button id="runBtn" class="run-btn" onclick="runCode()">▶ Execute System</button>
+        </div>
+    </header>
+
+    <div class="dashboard">
+        <!-- LEFT: Editor -->
+        <div class="panel editor-container">
+            <div class="panel-header">Source Code <span>main.cpp</span></div>
+            <textarea id="code"></textarea>
+        </div>
+
+        <!-- TOP RIGHT: Architecture Visualizer -->
+        <div class="panel">
+            <div class="panel-header">System Architecture Status</div>
+            <div class="visualizer" id="visualizer">
+                <div class="step" id="step1">
+                    <div class="step-icon">⚡</div>
+                    <div class="step-text">
+                        <h4>Tier 1: Local Heuristics</h4>
+                        <p>Scanning for obvious threats and simple code.</p>
+                    </div>
+                </div>
+                <div class="step" id="step2">
+                    <div class="step-icon">🧠</div>
+                    <div class="step-text">
+                        <h4>Tier 2: AI Security Scan</h4>
+                        <p>Gemini semantic analysis for complex logic.</p>
+                    </div>
+                </div>
+                <div class="step" id="step3">
+                    <div class="step-icon">🔒</div>
+                    <div class="step-text">
+                        <h4>Tier 3: Kernel Sandbox</h4>
+                        <p>Seccomp-BPF runtime isolation & execution.</p>
+                    </div>
+                </div>
+                <div class="step" id="step4">
+                    <div class="step-icon">🤖</div>
+                    <div class="step-text">
+                        <h4>Tier 4: AI Post-Mortem Tutor</h4>
+                        <p>Diagnosing runtime signals and crashes.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM RIGHT: Terminal -->
+        <div class="panel">
+            <div class="panel-header">Server Console <span>/bin/bash</span></div>
+            <pre id="output">Sandbox initialized. Awaiting payload...</pre>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/clike/clike.min.js"></script>
+    
+    <script>
+        var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+            mode: "text/x-c++src",
+            theme: "material-ocean",
+            lineNumbers: true,
+            indentUnit: 4,
+            matchBrackets: true
+        });
+
+        // Pre-loaded Code Examples for Presentation
+        const examples = {
+            hello: `#include <iostream>\n\nint main() {\n    std::cout << "Optimization: Fast-path bypasses AI.\\n";\n    return 0;\n}`,
+            
+            buffer: `#include <cstring>\n#include <iostream>\n\nint main() {\n    char buffer[10];\n    // Sandbox will catch this, AI Tutor will explain it\n    std::strcpy(buffer, "This string is way too massive for the buffer!");\n    return 0;\n}`,
+            
+            fork: `#include <unistd.h>\n\nint main() {\n    // Local Heuristics will catch this instantly\n    while(true) fork();\n    return 0;\n}`,
+            
+            obfuscated: `#include <iostream>\n#include <vector>\n\n// ---------------------------------------------------------\n// HACKER ATTEMPT: Obfuscated command to bypass local filters\n// ---------------------------------------------------------\n// The local regex looks for the exact word "system(".\n// The attacker hides the command in an array to bypass Tier 1.\n\nvoid execute_payload() {\n    // A hidden attempt to delete server files\n    char cmd[] = {'r', 'm', ' ', '-', 'r', 'f', ' ', '/', '\\0'};\n    \n    // Padding logic to bypass the "short code" fast-pass filter\n    std::vector<int> dummy_data(100, 0);\n    for(int i = 0; i < dummy_data.size(); i++) {\n        dummy_data[i] = i * 2;\n    }\n\n    // The AI Semantic Analyzer will read this array and block it!\n}\n\nint main() {\n    execute_payload();\n    return 0;\n}`
+        };
+
+        function loadExample() {
+            const selection = document.getElementById('exampleSelector').value;
+            editor.setValue(examples[selection]);
+        }
+        loadExample(); // Load default
+
+        function resetVisualizer() {
+            document.querySelectorAll('.step').forEach(el => {
+                el.className = 'step'; // remove active/success/danger/warning classes
+            });
+        }
+
+        // The Magic Parser: Reads backend text and lights up the UI
+        function animateVisualizer(text) {
+            // Tier 1
+            if (text.includes("Local Heuristic Analysis")) {
+                document.getElementById('step1').classList.add('active', 'success');
+            } else if (text.includes("BLOCKED BY LOCAL")) {
+                document.getElementById('step1').classList.add('active', 'danger');
+                return; // Stop animation
+            } else {
+                document.getElementById('step1').classList.add('active', 'success'); // Passed heuristic silently
+            }
+
+            // Tier 2
+            if (text.includes("Invoking AI Risk")) {
+                document.getElementById('step2').classList.add('active');
+                if (text.includes("BLOCKED BY AI")) {
+                    document.getElementById('step2').classList.add('danger');
+                    return;
+                } else {
+                    document.getElementById('step2').classList.add('success');
+                }
+            }
+
+            // Tier 3
+            if (text.includes("Execution Output") || text.includes("Execution Status")) {
+                document.getElementById('step3').classList.add('active');
+                if (text.includes("signal 31") || text.includes("signal 9") || text.includes("signal 11")) {
+                    document.getElementById('step3').classList.add('danger');
+                } else if (text.includes("exit code 0") || !text.includes("Terminated")) {
+                    document.getElementById('step3').classList.add('success');
+                }
+            }
+
+            // Tier 4
+            if (text.includes("AI Tutor")) {
+                document.getElementById('step4').classList.add('active', 'warning');
+            }
+        }
+
+        async function runCode() {
+            const runBtn = document.getElementById('runBtn');
+            const outputArea = document.getElementById('output');
+            const mode = document.getElementById('modeSelector').value;
+            const code = editor.getValue();
+
+            runBtn.disabled = true;
+            runBtn.innerText = "Processing...";
+            resetVisualizer();
+
+            // Terminal Loading Animation
+            let phase = 0;
+            const phases = [
+                "[*] Initializing Secure Pipeline...",
+                "[*] Scanning heuristics locally... (Fast Path)",
+                "[*] Handing off to execution environment...",
+                "[*] Executing binary inside Seccomp-BPF Sandbox...",
+                "[*] Process terminated. Collecting telemetry...",
+                "[*] Analyzing telemetry data (Waiting for Cloud API)..."
+            ];
+            
+            outputArea.innerHTML = phases[0];
+            
+            let loadingInterval = setInterval(() => {
+                if (phase < phases.length - 1) {
+                    phase++;
+                    outputArea.innerHTML += "\n" + phases[phase];
+                    
+                    // Visually light up blocks while waiting
+                    if (phase === 1) document.getElementById('step1').classList.add('active');
+                    if (phase === 3) document.getElementById('step3').classList.add('active');
+                    if (phase === 5) document.getElementById('step4').classList.add('active', 'warning');
+                } else {
+                    // Dot animation for AI wait time
+                    let text = outputArea.innerHTML.replace(/\.+$/, '');
+                    outputArea.innerHTML = text + ".";
+                }
+            }, 600);
+
+            try {
+                const response = await fetch('/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, mode })
+                });
+
+                const data = await response.json();
+                
+                // Clear loading
+                clearInterval(loadingInterval);
+                resetVisualizer(); 
+                
+                // Show real output
+                outputArea.textContent = data.output;
+                
+                // Animate final blocks based on what actually happened
+                animateVisualizer(data.output);
+
+            } catch (error) {
+                clearInterval(loadingInterval);
+                outputArea.textContent = "[!] Dashboard Error: Connection lost to Host Sandbox.";
+                document.getElementById('step1').classList.add('active', 'danger');
+            } finally {
+                runBtn.disabled = false;
+                runBtn.innerText = "▶ Execute System";
+            }
+        }
+    </script>
+</body>
+</html>

@@ -6,115 +6,107 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY") 
+# --- CONFIGURATION ---
 
-# Try the v1 endpoint instead of v1beta
+API_KEY = os.getenv("API_KEY")
+
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
 
-def analyze_with_gemini(code_content):
-    """
-    Sends the C++ code to Google Gemini.
-    Asks it to act as a Security Auditor.
-    """
-    
-    # The System Prompt: We tell the AI exactly what to look for.
-    prompt_text = f"""
-    You are a Static Analysis Security Tool (SAST) for a C++ Sandbox.
-    Analyze the following user code for malicious intent or resource abuse.
-
-    Specific Risks to flag:
-    1. Infinite Loops (while(1), for(;;)) -> Risk: DoS
-    2. Fork Bombs (while(1) fork()) -> Risk: System Crash
-    3. System Calls (system(), exec(), popen()) -> Risk: RCE
-    4. Network Calls (socket, connect) -> Risk: Reverse Shell
-    5. File I/O (ofstream, remove) -> Risk: File System Damage
-
-    User Code:
-    ```cpp
-    {code_content}
-    ```
-
-    Respond ONLY with a valid JSON object in this exact format (no markdown formatting):
-    {{
-        "risk_score": (integer 0-10, where 10 is critical),
-        "is_safe": (boolean, false if risk_score > 6),
-        "analysis": "(string, brief explanation of the risk)"
-    }}
-    """
-
-    payload = {
-        "contents": [{
-            "parts": [{
-                "text": prompt_text
-            }]
-        }]
-    }
-    
+# --- GEMINI API CALLER ---
+def call_gemini(prompt):
+    payload = { "contents": [{ "parts": [{ "text": prompt }] }] }
     headers = { "Content-Type": "application/json" }
-
     try:
-        # Updated Line: Wait up to 15 seconds
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=15)
-        
+        # Timeout increased to 30s for stability
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
         if response.status_code != 200:
-            return {
-                "risk_score": 0, 
-                "is_safe": True, 
-                "analysis": f"AI Error: API returned {response.status_code}. Response: {response.text}"
-            }
-
+            return f"AI Error: {response.status_code}"
+        
         data = response.json()
-        
-        # Extract the text reply from Gemini
-        try:
-            ai_text = data['candidates'][0]['content']['parts'][0]['text']
-        except (KeyError, IndexError):
-             return {
-                "risk_score": 0, 
-                "is_safe": True, 
-                "analysis": "AI Error: Unexpected JSON structure from API."
-            }
-        
-        # Sanitize: Remove markdown code fences if Gemini adds them
-        ai_text = ai_text.replace("```json", "").replace("```", "").strip()
-        
-        return json.loads(ai_text)
-
+        if 'candidates' not in data:
+            return "AI returned no content."
+            
+        text = data['candidates'][0]['content']['parts'][0]['text']
+        # Clean up markdown if any slips through
+        return text.replace("```json", "").replace("```", "").strip()
     except Exception as e:
-        # Fail-open: If internet is down, we let the Sandbox OS limits handle it.
-        return {
-            "risk_score": 0, 
-            "is_safe": True, 
-            "analysis": f"AI Connection Failed: {str(e)}"
-        }
+        return f"AI Connection Failed: {str(e)}"
 
+# --- LOGIC FUNCTIONS ---
+
+def analyze_risk(code):
+    prompt = f"""
+    You are a Security Auditor. Analyze this C++ code for malicious intent (Fork bombs, system calls, network access).
+    Respond ONLY with JSON: {{ "risk_score": 0-10, "is_safe": boolean, "analysis": "reason" }}
+    Code:
+    {code}
+    """
+    return call_gemini(prompt)
+
+def explain_compile_error(code, error_msg):
+    prompt = f"""
+    You are a C++ Error Analyzer.
+    
+    Source Code:
+    {code}
+    
+    Compiler Error:
+    {error_msg}
+    
+    Task: Identify the syntax error in ONE sentence.
+    Do NOT explain how to fix it. Do NOT use bullet points.
+    """
+    return call_gemini(prompt)
+
+def explain_runtime_error(code, signal_code):
+    reasons = {
+        "11": "Segmentation Fault",
+        "8": "Floating Point Exception",
+        "9": "Killed (Memory Limit)",
+        "31": "Bad System Call (Sandbox Violation)",
+        "6": "Aborted"
+    }
+    reason = reasons.get(signal_code, f"Signal {signal_code}")
+    
+    prompt = f"""
+    The C++ code crashed with: {reason}.
+    
+    Source Code:
+    {code}
+    
+    Task: State the cause of the crash in ONE sentence. 
+    Mention the specific line or variable responsible.
+    Do NOT explain how to fix it. Do NOT use bullet points.
+    """
+    return call_gemini(prompt)
+
+# --- MAIN DRIVER ---
 def main():
-    if len(sys.argv) < 2:
-        # If no file provided, print error but don't crash
-        print(json.dumps({"error": "No file provided"}))
+    if len(sys.argv) < 3:
+        print(json.dumps({"error": "Usage: python risk_analyzer.py <mode> <file> [extra_arg]"}))
         sys.exit(1)
-        
-    filepath = sys.argv[1]
+
+    mode = sys.argv[1]
+    filepath = sys.argv[2]
     
     try:
         with open(filepath, 'r') as f:
             code_content = f.read()
-            
-        # Check if user forgot to set key
-        if API_KEY == "PASTE_YOUR_API_KEY_HERE" or API_KEY == "":
-            print(json.dumps({
-                "risk_score": 0,
-                "is_safe": True, 
-                "analysis": "CONFIGURATION ERROR: API Key is missing in risk_analyzer.py"
-            }))
-        else:
-            result = analyze_with_gemini(code_content)
-            print(json.dumps(result))
-            
-    except FileNotFoundError:
-        print(json.dumps({"error": "File not found"}))
-    except Exception as e:
-        print(json.dumps({"error": str(e)}))
+    except:
+        code_content = ""
+
+    if mode == "analyze":
+        print(analyze_risk(code_content))
+    elif mode == "compile_error":
+        error_log_path = sys.argv[3]
+        try:
+            with open(error_log_path, 'r') as ef: error_msg = ef.read()
+            # Send first 2000 chars of error log
+            print(explain_compile_error(code_content, error_msg[:2000]))
+        except: print("Error reading log")
+    elif mode == "runtime_error":
+        signal_num = sys.argv[3]
+        print(explain_runtime_error(code_content, signal_num))
 
 if __name__ == "__main__":
     main()
