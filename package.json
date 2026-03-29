@@ -1,23 +1,12 @@
 {
-  "name": "sandbox_c",
+  "name": "secure_sandbox_compiler",
   "version": "1.0.0",
-  "description": "> **Project:** Compiler Design (CS1202)   > **Student:** G. L. N. Pardhiv (Roll No: 24CSB0B24)   > **Current Phase:** Week 9 (Full Stack Integration)",
-  "homepage": "https://github.com/GLNPardhiv/Secure_Sandbox_Compiler#readme",
-  "bugs": {
-    "url": "https://github.com/GLNPardhiv/Secure_Sandbox_Compiler/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/GLNPardhiv/Secure_Sandbox_Compiler.git"
-  },
-  "license": "ISC",
-  "author": "Pardhiv GLN",
-  "type": "commonjs",
-  "main": "index.js",
+  "description": "Full-stack web interface for Secure Sandbox Compiler",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^4.18.2"
   }
 }

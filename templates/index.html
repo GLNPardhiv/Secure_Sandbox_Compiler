@@ -208,7 +208,7 @@
             
             fork: `#include <unistd.h>\n\nint main() {\n    // Local Heuristics will catch this instantly\n    while(true) fork();\n    return 0;\n}`,
             
-            obfuscated: `#include <iostream>\n#include <vector>\n\n// ---------------------------------------------------------\n// HACKER ATTEMPT: Obfuscated command to bypass local filters\n// ---------------------------------------------------------\n// The local regex looks for the exact word "system(".\n// The attacker hides the command in an array to bypass Tier 1.\n\nvoid execute_payload() {\n    // A hidden attempt to delete server files\n    char cmd[] = {'r', 'm', ' ', '-', 'r', 'f', ' ', '/', '\\0'};\n    \n    // Padding logic to bypass the "short code" fast-pass filter\n    std::vector<int> dummy_data(100, 0);\n    for(int i = 0; i < dummy_data.size(); i++) {\n        dummy_data[i] = i * 2;\n    }\n\n    // The AI Semantic Analyzer will read this array and block it!\n}\n\nint main() {\n    execute_payload();\n    return 0;\n}`
+            obfuscated: `#include <iostream>\n#include <cstdlib>\n#include <unistd.h>\n\n// ---------------------------------------------------------\n// HACKER ATTEMPT: Function pointer obfuscation\n// ---------------------------------------------------------\nvoid execute_payload() {\n    // 1. Hide the execution call using a function pointer\n    // This bypasses the local regex because there is no "system("\n    int (*sys_ptr)(const char*) = system;\n    \n    // 2. Hide the malicious command\n    char cmd[] = {'r', 'm', ' ', '-', 'r', 'f', ' ', '/', '\\0'};\n    \n    // 3. Execute! \n    // Local filter misses this. AI will catch the semantic intent!\n    sys_ptr(cmd);\n}\n\nint main() {\n    execute_payload();\n    return 0;\n}`
         };
 
         function loadExample() {
@@ -223,41 +223,42 @@
             });
         }
 
-        // The Magic Parser: Reads backend text and lights up the UI
         function animateVisualizer(text) {
-            // Tier 1
-            if (text.includes("Local Heuristic Analysis")) {
+            const out = text.toLowerCase(); 
+
+            // Tier 1: Heuristics
+            if (out.includes("local heuristic") || out.includes("fast-path") || out.includes("skipping ai")) {
                 document.getElementById('step1').classList.add('active', 'success');
-            } else if (text.includes("BLOCKED BY LOCAL")) {
+            } else if (out.includes("blocked by local") || out.includes("fast-fail")) {
                 document.getElementById('step1').classList.add('active', 'danger');
-                return; // Stop animation
+                return; 
             } else {
-                document.getElementById('step1').classList.add('active', 'success'); // Passed heuristic silently
+                document.getElementById('step1').classList.add('active', 'success'); 
             }
 
-            // Tier 2
-            if (text.includes("Invoking AI Risk")) {
+            // Tier 2: AI Scanner
+            if (out.includes("invoking ai") || out.includes("risk analyzer")) {
                 document.getElementById('step2').classList.add('active');
-                if (text.includes("BLOCKED BY AI")) {
+                if (out.includes("blocked by ai") || out.includes("malicious") || out.includes("unsafe")) {
                     document.getElementById('step2').classList.add('danger');
-                    return;
+                    return; // Stop pipeline
                 } else {
                     document.getElementById('step2').classList.add('success');
                 }
             }
 
-            // Tier 3
-            if (text.includes("Execution Output") || text.includes("Execution Status")) {
+            // Tier 3: Kernel Sandbox
+            if (out.includes("execution output") || out.includes("execution status") || out.includes("sandbox")) {
                 document.getElementById('step3').classList.add('active');
-                if (text.includes("signal 31") || text.includes("signal 9") || text.includes("signal 11")) {
+                if (out.includes("signal 31") || out.includes("signal 9") || out.includes("signal 11") || out.includes("violation") || out.includes("terminated")) {
                     document.getElementById('step3').classList.add('danger');
-                } else if (text.includes("exit code 0") || !text.includes("Terminated")) {
+                } else {
                     document.getElementById('step3').classList.add('success');
                 }
             }
 
-            // Tier 4
-            if (text.includes("AI Tutor")) {
+            // Tier 4: AI Tutor
+            if (out.includes("ai tutor") || out.includes("crash analysis")) {
                 document.getElementById('step4').classList.add('active', 'warning');
             }
         }
