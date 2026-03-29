@@ -4,7 +4,8 @@
 #include <cstdio>
 #include <array>
 #include <memory>
-#include <fstream> 
+#include <fstream>
+#include <vector>
 
 #include "compiler.h"
 #include "sandbox.h"
@@ -36,36 +37,49 @@ bool quickHeuristicCheck(const std::string& sourcePath, bool& skipAI) {
     if (!f.is_open()) return false;
 
     std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    
-    // 1. FAST FAIL: Dangerous Keywords (Block immediately)
-    // If these exist, we don't even need AI to tell us it's bad.
-    const char* badKeywords[] = {"fork(", "system(", "exec(", "socket(", "popen(", "clone("};
-    for (const char* kw : badKeywords) {
+    int threatScore = 0;
+
+    // 1. FATAL THREATS (+100) -> Immediate Local Block
+    std::vector<std::string> fatalKeywords = {
+        "system(", "fork(", "exec", "asm(", "<sys/socket.h>", "popen(", "clone("
+    };
+    for (const auto& kw : fatalKeywords) {
         if (content.find(kw) != std::string::npos) {
             std::cout << "[!] ⚡ Fast-Fail: Dangerous keyword '" << kw << "' detected locally.\n";
-            return false; // Block immediately
+            threatScore += 100;
+            break; // No need to check further, it's already dead
         }
     }
 
-    // 2. FAST PASS: Simple Code (Skip AI)
-    // If the code is small and only uses standard IO, trust the Sandbox to catch runtime errors.
-    // This makes "Hello World" instant.
-    bool hasIoStream = content.find("#include <iostream>") != std::string::npos;
-    bool hasVector = content.find("#include <vector>") != std::string::npos;
-    
-    // If code is short (< 300 chars) and doesn't have complex headers like <unistd.h>
-    if (content.length() < 300 && 
-        content.find("#include <unistd.h>") == std::string::npos &&
-        content.find("#include <sys/") == std::string::npos) {
-        
-        std::cout << ">>> ⚡ Local Heuristic Analysis: Code looks simple & safe. Skipping AI.\n";
-        skipAI = true; // Tell main to skip the API call
-        return true;   // Allow compilation
+    // 2. SUSPICIOUS FEATURES (+50) -> Force AI Scan
+    // These aren't malicious by themselves, but hackers use them to obfuscate.
+    std::vector<std::string> suspiciousFeatures = {
+        "<unistd.h>",      // POSIX OS API
+        "<string>",        // String manipulation (like "soc" + "ket")
+        "vector",          // Data structures (padding)
+        "(*",              // Function pointers (used to hide executions)
+        "char ",           // Raw char arrays (used to hide commands)
+        "fstream"          // File reading/writing
+    };
+    for (const auto& feature : suspiciousFeatures) {
+        if (content.find(feature) != std::string::npos) {
+            threatScore += 50;
+        }
     }
 
-    // 3. AMBIGUOUS: Code is complex or long.
-    skipAI = false; // Must call AI
-    return true;    // Proceed to AI check
+    // --- DECISION ENGINE ---
+    if (threatScore >= 100) {
+        return false; // Fast-Fail: Block compilation
+    } 
+    else if (threatScore > 0) {
+        skipAI = false; // Suspicious: Force Gemini Scan
+        return true;    // Proceed to AI step
+    } 
+    else {
+        std::cout << ">>> ⚡ Local Heuristic Analysis: Code looks simple & safe. Skipping AI.\n";
+        skipAI = true;  // Score is 0: Pure boilerplate, Fast-Pass
+        return true;    // Proceed to compile directly
+    }
 }
 
 int main(int argc, char* argv[]) {
