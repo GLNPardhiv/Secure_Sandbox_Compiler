@@ -10,3 +10,6 @@ __pycache__/
 *.so
 a.out
 sandboxcc
+node_modules/
+dist/
+build/
