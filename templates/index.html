@@ -455,6 +455,15 @@
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 3px; }
+
+        /* ── REDUCED MOTION ──────────────────────────────────────────── */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -555,6 +564,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/clike/clike.min.js"></script>
 
     <script>
+        const BTN_IDLE_HTML = '<span class="btn-spinner"></span>▶ Execute System';
+        const BTN_BUSY_HTML = '<span class="btn-spinner"></span>Processing...';
+
         var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
             mode: "text/x-c++src",
             theme: "material-ocean",
@@ -647,7 +659,7 @@
 
             runBtn.disabled = true;
             runBtn.classList.add('loading');
-            runBtn.innerHTML = '<span class="btn-spinner"></span>Processing...';
+            runBtn.innerHTML = BTN_BUSY_HTML;
             loadBar.style.opacity = '1';
             resetVisualizer();
 
@@ -701,7 +713,7 @@
             } finally {
                 runBtn.disabled = false;
                 runBtn.classList.remove('loading');
-                runBtn.innerHTML = '<span class="btn-spinner"></span>▶ Execute System';
+                runBtn.innerHTML = BTN_IDLE_HTML;
                 loadBar.style.opacity = '0';
             }
         }
