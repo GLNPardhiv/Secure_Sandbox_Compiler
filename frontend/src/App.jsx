@@ -210,22 +210,47 @@ export default function App() {
   // Update telemetry
   const updateTelemetry = (outText) => {
     const lower = outText.toLowerCase();
-    let newTiers = [...tiers];
+    
+    // Always reset to idle first
+    let newTiers = [
+      { id: 1, name: 'Heuristics', status: 'idle', desc: 'Fast-Pass Analysis' },
+      { id: 2, name: 'AI Scanner', status: 'idle', desc: 'Gemini Semantic Check' },
+      { id: 3, name: 'Kernel', status: 'idle', desc: 'Seccomp-BPF Sandbox' },
+      { id: 4, name: 'AI Tutor', status: 'idle', desc: 'Post-Mortem Diagnostics' }
+    ];
 
-    if (lower.includes("fast-fail") || lower.includes("blocked by local")) newTiers[0].status = 'danger';
-    else if (lower.includes("local heuristic")) newTiers[0].status = 'success';
-    else newTiers[0].status = 'idle';
+    // --- TIER 1: HEURISTICS ---
+    if (lower.includes("fast-fail") || lower.includes("blocked by local")) {
+      newTiers[0].status = 'danger'; // Hard blocked
+      setTiers(newTiers);
+      return; // Stop processing further tiers
+    } else if (lower.includes("local heuristic") || lower.includes("invoking ai")) {
+      newTiers[0].status = 'success'; // Passed
+    }
 
-    if (lower.includes("blocked by ai")) newTiers[1].status = 'danger';
-    else if (lower.includes("invoking ai")) newTiers[1].status = 'success';
-    else newTiers[1].status = 'idle';
+    // --- TIER 2: AI SCANNER ---
+    if (lower.includes("blocked by ai")) {
+      newTiers[1].status = 'danger'; // AI Blocked it
+      setTiers(newTiers);
+      return; // Stop processing further tiers
+    } else if (lower.includes("invoking ai")) {
+      newTiers[1].status = 'success'; // AI Scanned and Passed it
+    } else if (lower.includes("skipping ai")) {
+      newTiers[1].status = 'idle'; // Completely bypassed to save tokens!
+    }
 
-    if (lower.includes("signal 31") || lower.includes("signal 11")) newTiers[2].status = 'danger';
-    else if (lower.includes("execution status") || lower.includes("sandbox")) newTiers[2].status = 'success';
-    else newTiers[2].status = 'idle';
+    // --- TIER 3: KERNEL SANDBOX ---
+    if (lower.includes("signal 31") || lower.includes("signal 11") || lower.includes("signal 9") || lower.includes("terminated by signal")) {
+      newTiers[2].status = 'danger'; // Sandbox killed it
+    } else if (lower.includes("execution status") || lower.includes("sandbox interpretation")) {
+      newTiers[2].status = 'success'; // Ran successfully
+    }
 
-    if (lower.includes("ai tutor")) newTiers[3].status = 'warning';
-    else newTiers[3].status = 'idle';
+    // --- TIER 4: AI TUTOR ---
+    // The Tutor ONLY runs if Tier 3 crashed, or if compilation failed
+    if (lower.includes("ai tutor") || lower.includes("crash analysis") || lower.includes("compiler help")) {
+      newTiers[3].status = 'warning'; // Lights up Yellow to show active help
+    }
 
     setTiers(newTiers);
   };
